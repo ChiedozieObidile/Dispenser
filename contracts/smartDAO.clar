@@ -54,8 +54,10 @@
     )
     (asserts! (>= (get-balance caller) u1) ERR_UNAUTHORIZED) ;; Must hold at least 1 token to create proposal
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (<= amount u1000000000) ERR_INVALID_AMOUNT) ;; Add upper bound check
     (asserts! (is-some (as-max-len? title u50)) ERR_INVALID_INPUT) ;; Check title length
     (asserts! (is-some (as-max-len? description u500)) ERR_INVALID_INPUT) ;; Check description length
+    ;; No need for explicit principal validation as Clarity handles this implicitly
     (map-set proposals proposal-id
       {
         creator: caller,
@@ -85,7 +87,9 @@
     (asserts! (not (has-voted proposal-id caller)) ERR_ALREADY_VOTED)
     (asserts! (> voter-balance u0) ERR_UNAUTHORIZED)
     
+    ;; Update vote record before changing proposal state
     (map-set votes {proposal-id: proposal-id, voter: caller} true)
+    
     (if vote-for
       (map-set proposals proposal-id 
         (merge proposal {votes-for: (+ (get votes-for proposal) voter-balance)}))
@@ -105,9 +109,11 @@
     (asserts! (not (get executed proposal)) ERR_PROPOSAL_ALREADY_EXECUTED)
     (asserts! (> (get votes-for proposal) (get votes-against proposal)) ERR_UNAUTHORIZED)
     
-    (try! (as-contract (stx-transfer? (get amount proposal) tx-sender (get recipient proposal))))
+    ;; Mark proposal as executed before transferring funds
     (map-set proposals proposal-id (merge proposal {executed: true}))
-    (ok true)
+    
+    ;; Transfer funds after updating proposal state
+    (as-contract (stx-transfer? (get amount proposal) tx-sender (get recipient proposal)))
   )
 )
 
@@ -117,6 +123,7 @@
       (caller tx-sender)
     )
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (<= amount u1000000000) ERR_INVALID_AMOUNT) ;; Add upper bound check
     (try! (stx-transfer? amount caller (as-contract tx-sender)))
     (ok true)
   )
@@ -129,8 +136,16 @@
       (new-balance (+ current-balance amount))
       (new-supply (+ (var-get total-supply) amount))
     )
+    ;; Only allow minting by the contract itself
     (asserts! (is-eq tx-sender (as-contract tx-sender)) ERR_UNAUTHORIZED)
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (<= amount u1000000000) ERR_INVALID_AMOUNT) ;; Add upper bound check
+    ;; Check for integer overflow
+    (asserts! (>= new-balance current-balance) ERR_INVALID_AMOUNT)
+    (asserts! (>= new-supply (var-get total-supply)) ERR_INVALID_AMOUNT)
+    ;; No need for explicit principal validation
+    
+    ;; Update total supply and recipient's balance
     (var-set total-supply new-supply)
     (map-set balances recipient new-balance)
     (ok true)
@@ -143,12 +158,18 @@
       (sender tx-sender)
       (sender-balance (get-balance sender))
       (recipient-balance (get-balance recipient))
+      (new-recipient-balance (+ recipient-balance amount))
     )
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (<= amount u1000000000) ERR_INVALID_AMOUNT) ;; Add upper bound check
     (asserts! (<= amount sender-balance) ERR_INSUFFICIENT_BALANCE)
+    ;; Check for integer overflow
+    (asserts! (>= new-recipient-balance recipient-balance) ERR_INVALID_AMOUNT)
+    ;; No need for explicit principal validation
     
+    ;; Update balances
     (map-set balances sender (- sender-balance amount))
-    (map-set balances recipient (+ recipient-balance amount))
+    (map-set balances recipient new-recipient-balance)
     (ok true)
   )
 )
