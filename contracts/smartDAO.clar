@@ -6,6 +6,7 @@
 (define-constant ERR_INSUFFICIENT_BALANCE (err u104))
 (define-constant ERR_PROPOSAL_NOT_FOUND (err u105))
 (define-constant ERR_PROPOSAL_ALREADY_EXECUTED (err u106))
+(define-constant ERR_INVALID_INPUT (err u107))
 
 ;; Define data variables
 (define-data-var total-supply uint u1000000) ;; Total number of governance tokens
@@ -53,6 +54,8 @@
     )
     (asserts! (>= (get-balance caller) u1) ERR_UNAUTHORIZED) ;; Must hold at least 1 token to create proposal
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (is-some (as-max-len? title u50)) ERR_INVALID_INPUT) ;; Check title length
+    (asserts! (is-some (as-max-len? description u500)) ERR_INVALID_INPUT) ;; Check description length
     (map-set proposals proposal-id
       {
         creator: caller,
@@ -113,6 +116,7 @@
     (
       (caller tx-sender)
     )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
     (try! (stx-transfer? amount caller (as-contract tx-sender)))
     (ok true)
   )
@@ -126,6 +130,7 @@
       (new-supply (+ (var-get total-supply) amount))
     )
     (asserts! (is-eq tx-sender (as-contract tx-sender)) ERR_UNAUTHORIZED)
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
     (var-set total-supply new-supply)
     (map-set balances recipient new-balance)
     (ok true)
@@ -137,11 +142,13 @@
     (
       (sender tx-sender)
       (sender-balance (get-balance sender))
+      (recipient-balance (get-balance recipient))
     )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
     (asserts! (<= amount sender-balance) ERR_INSUFFICIENT_BALANCE)
     
     (map-set balances sender (- sender-balance amount))
-    (map-set balances recipient (+ (get-balance recipient) amount))
+    (map-set balances recipient (+ recipient-balance amount))
     (ok true)
   )
 )
