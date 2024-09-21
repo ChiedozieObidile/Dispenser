@@ -7,6 +7,7 @@
 (define-constant ERR_PROPOSAL_NOT_FOUND (err u105))
 (define-constant ERR_PROPOSAL_ALREADY_EXECUTED (err u106))
 (define-constant ERR_INVALID_INPUT (err u107))
+(define-constant ERR_INVALID_PRINCIPAL (err u108))
 
 ;; Define data variables
 (define-data-var total-supply uint u1000000) ;; Total number of governance tokens
@@ -44,6 +45,14 @@
   (default-to false (map-get? votes {proposal-id: proposal-id, voter: account}))
 )
 
+;; Helper function to check if a principal is valid (not zero address and not the contract itself)
+(define-private (is-valid-principal (address principal))
+  (and
+    (not (is-eq address 'SP000000000000000000002Q6VF78))  ;; Check if not zero address
+    (not (is-eq address (as-contract tx-sender)))         ;; Check if not the contract itself
+  )
+)
+
 ;; Public functions
 
 (define-public (create-proposal (title (string-ascii 50)) (description (string-utf8 500)) (amount uint) (recipient principal))
@@ -57,7 +66,7 @@
     (asserts! (<= amount u1000000000) ERR_INVALID_AMOUNT) ;; Add upper bound check
     (asserts! (is-some (as-max-len? title u50)) ERR_INVALID_INPUT) ;; Check title length
     (asserts! (is-some (as-max-len? description u500)) ERR_INVALID_INPUT) ;; Check description length
-    ;; No need for explicit principal validation as Clarity handles this implicitly
+    (asserts! (is-valid-principal recipient) ERR_INVALID_PRINCIPAL) ;; Check if recipient is a valid principal
     (map-set proposals proposal-id
       {
         creator: caller,
@@ -143,7 +152,7 @@
     ;; Check for integer overflow
     (asserts! (>= new-balance current-balance) ERR_INVALID_AMOUNT)
     (asserts! (>= new-supply (var-get total-supply)) ERR_INVALID_AMOUNT)
-    ;; No need for explicit principal validation
+    (asserts! (is-valid-principal recipient) ERR_INVALID_PRINCIPAL) ;; Check if recipient is a valid principal
     
     ;; Update total supply and recipient's balance
     (var-set total-supply new-supply)
@@ -165,7 +174,7 @@
     (asserts! (<= amount sender-balance) ERR_INSUFFICIENT_BALANCE)
     ;; Check for integer overflow
     (asserts! (>= new-recipient-balance recipient-balance) ERR_INVALID_AMOUNT)
-    ;; No need for explicit principal validation
+    (asserts! (is-valid-principal recipient) ERR_INVALID_PRINCIPAL) ;; Check if recipient is a valid principal
     
     ;; Update balances
     (map-set balances sender (- sender-balance amount))
