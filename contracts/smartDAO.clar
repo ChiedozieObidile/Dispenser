@@ -8,6 +8,7 @@
 (define-constant ERR_PROPOSAL_ALREADY_EXECUTED (err u106))
 (define-constant ERR_INVALID_INPUT (err u107))
 (define-constant ERR_INVALID_PRINCIPAL (err u108))
+(define-constant ERR_BATCH_EXECUTION_FAILED (err u109))
 
 ;; Define data variables
 (define-data-var total-supply uint u1000000) ;; Total number of governance tokens
@@ -29,7 +30,7 @@
     executed: bool
   }
 )
-(define-map votes {proposal-id: uint, voter: principal} bool)
+(define-map vote-records {proposal-id: uint, voter: principal} bool)
 
 ;; Read-only functions
 
@@ -42,7 +43,7 @@
 )
 
 (define-read-only (has-voted (proposal-id uint) (account principal))
-  (default-to false (map-get? votes {proposal-id: proposal-id, voter: account}))
+  (default-to false (map-get? vote-records {proposal-id: proposal-id, voter: account}))
 )
 
 ;; Helper function to check if a principal is valid (not zero address and not the contract itself)
@@ -97,7 +98,7 @@
     (asserts! (> voter-balance u0) ERR_UNAUTHORIZED)
     
     ;; Update vote record before changing proposal state
-    (map-set votes {proposal-id: proposal-id, voter: caller} true)
+    (map-set vote-records {proposal-id: proposal-id, voter: caller} true)
     
     (if vote-for
       (map-set proposals proposal-id 
@@ -181,4 +182,31 @@
     (map-set balances recipient new-recipient-balance)
     (ok true)
   )
+)
+
+;; New function for batch execution of proposals
+(define-public (batch-execute (proposal-ids (list 10 uint)))
+  (let
+    (
+      (result (map execute-proposal proposal-ids))
+    )
+    (asserts! (is-eq (len result) (len proposal-ids)) ERR_BATCH_EXECUTION_FAILED)
+    (ok true)
+  )
+)
+
+;; New function for batch voting
+(define-public (batch-vote-multiple (vote-list (list 10 {proposal-id: uint, vote-for: bool})))
+  (let
+    (
+      (result (map vote-on-proposal vote-list))
+    )
+    (asserts! (is-eq (len result) (len vote-list)) ERR_BATCH_EXECUTION_FAILED)
+    (ok true)
+  )
+)
+
+;; Helper function for batch voting
+(define-private (vote-on-proposal (vote-data {proposal-id: uint, vote-for: bool}))
+  (vote (get proposal-id vote-data) (get vote-for vote-data))
 )
